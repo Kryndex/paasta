@@ -13,17 +13,21 @@
 # limitations under the License.
 import argparse
 import fnmatch
+import getpass
+import hashlib
 import logging
 import os
 import pkgutil
 import random
 import re
+import socket
 import subprocess
 import sys
 from shlex import quote
 from socket import gaierror
 from socket import gethostbyname_ex
 
+import ephemeral_port_reserve
 from bravado.exception import HTTPError
 from bravado.exception import HTTPNotFound
 
@@ -1054,3 +1058,26 @@ def get_task_from_instance(cluster, service, instance, slave_hostname=None, task
 def get_container_name(task):
     container_name = "mesos-{}.{}".format(task.slave_id, task.executor['container'])
     return container_name
+
+
+def check_if_port_free(port):
+    temp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        temp_socket.bind(("127.0.0.1", port))
+    except socket.error:
+        return False
+    finally:
+        temp_socket.close()
+    return True
+
+
+def pick_random_port(service_name):
+    """Return a random port.
+
+    Tries to return the same port for the same service each time, when
+    possible.
+    """
+    hash_key = f'{service_name},{getpass.getuser()}'.encode('utf8')
+    hash_number = int(hashlib.sha1(hash_key).hexdigest(), 16)
+    preferred_port = 33000 + (hash_number % 25000)
+    return ephemeral_port_reserve.reserve('0.0.0.0', preferred_port)

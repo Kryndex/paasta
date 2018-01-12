@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import datetime
-import getpass
-import hashlib
 import json
 import os
 import socket
@@ -25,7 +23,6 @@ from os import execlp
 from random import randint
 from urllib.parse import urlparse
 
-import ephemeral_port_reserve
 import requests
 from docker import errors
 
@@ -33,11 +30,13 @@ from paasta_tools.adhoc_tools import get_default_interactive_config
 from paasta_tools.chronos_tools import parse_time_variables
 from paasta_tools.cli.cmds.check import makefile_responds_to
 from paasta_tools.cli.cmds.cook_image import paasta_cook_image
+from paasta_tools.cli.utils import check_if_port_free
 from paasta_tools.cli.utils import figure_out_service_name
 from paasta_tools.cli.utils import get_instance_config
 from paasta_tools.cli.utils import lazy_choices_completer
 from paasta_tools.cli.utils import list_instances
 from paasta_tools.cli.utils import list_services
+from paasta_tools.cli.utils import pick_random_port
 from paasta_tools.long_running_service_tools import get_healthcheck_for_instance
 from paasta_tools.paasta_execute_docker_command import execute_in_container
 from paasta_tools.utils import _run
@@ -57,18 +56,6 @@ from paasta_tools.utils import timed_flock
 from paasta_tools.utils import Timeout
 from paasta_tools.utils import TimeoutError
 from paasta_tools.utils import validate_service_instance
-
-
-def pick_random_port(service_name):
-    """Return a random port.
-
-    Tries to return the same port for the same service each time, when
-    possible.
-    """
-    hash_key = f'{service_name},{getpass.getuser()}'.encode('utf8')
-    hash_number = int(hashlib.sha1(hash_key).hexdigest(), 16)
-    preferred_port = 33000 + (hash_number % 25000)
-    return ephemeral_port_reserve.reserve('0.0.0.0', preferred_port)
 
 
 def perform_http_healthcheck(url, timeout):
@@ -520,17 +507,6 @@ def get_local_run_environment_vars(instance_config, port0, framework):
         env['CHRONOS_JOB_RUN_ATTEMPT'] = str(0)
         env['mesos_task_id'] = 'ct:simulated-task-id'
     return env
-
-
-def check_if_port_free(port):
-    temp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        temp_socket.bind(("127.0.0.1", port))
-    except socket.error:
-        return False
-    finally:
-        temp_socket.close()
-    return True
 
 
 def run_docker_container(
